@@ -29,46 +29,62 @@ if not markets:
 
 print(f"Found {len(markets)} individual market outcomes to check.")
 all_top_holders = []
+def fetch_trades_for_market(condition_id, limit=10, offset=0):
+    url = "https://data-api.polymarket.com/trades"
+    params = {
+        "limit": limit,
+        "offset": offset,
+        "market": condition_id
+    }
+    resp = requests.get(url, params=params)
+    resp.raise_for_status()
+    return resp.json()
+
 
 # 2. ITERATE THROUGH EACH MARKET TO FETCH TOP HOLDERS
 for market in markets:
     condition_id = market.get('conditionId')
     market_question = market.get('question')
-    
-    print(f"\n-> Fetching top holders for: {market_question}...")
-    
-    # FETCH THE TOP HOLDERS FOR THAT SPECIFIC OUTCOME (using the Data-API)
-    holders_url = f"{DATA_API_URL}/holders"
-    params = {
-        'market': condition_id, # Use the conditionId
-        'limit': HOLDERS_PER_MARKET_LIMIT
-    }
+    trades = fetch_trades_for_market(condition_id, limit=10, offset=0)
+    print(f"Fetched {len(trades)} trades for market {condition_id}")
+    print()
 
-    try:
-        holders_response = requests.get(holders_url, params=params)
-        holders_response.raise_for_status()
-        holders_data = holders_response.json()
-    except requests.exceptions.RequestException as e:
-        print(f"   ERROR: Could not fetch holders data for {market_question}: {e}")
-        continue # Move to the next market
+    for i, trade in enumerate(trades, start=1):
+        ts = trade.get("timestamp")
+        try:
+            dt = datetime.fromtimestamp(ts/1000) if ts > 1e12 else datetime.fromtimestamp(ts)
+        except Exception:
+            dt = None
+
+        side = trade.get("side")
+        outcome = trade.get("outcome")
+        price = trade.get("price")
+        size = trade.get("size")
+
+        maker = trade.get("maker") or trade.get("proxyWallet")
+        taker = trade.get("taker")
+
+        total_cost = None
+        if price is not None and size is not None:
+            try:
+                total_cost = float(price) * float(size)
+            except (TypeError, ValueError):
+                pass
+
+        print(f"Trade #{i}")
+        print(f"  Time: {dt} (raw {ts})")
+        print(f"  Side: {side}")
+        print(f"  Outcome: {outcome}")
+        print(f"  Price: {price}")
+        print(f"  Size: {size}")
+        if total_cost is not None:
+            print(f"  Total Bet Value: {total_cost:.4f} USDC")
+        print(f"  Maker Wallet: {maker}")
+        print(f"  Taker Wallet: {taker}")
+        print(f"  Transaction Hash: {trade.get('transactionHash')}")
+        print("-" * 60)
     
-    # The API returns a list of tokens, with the first (index 0) being the YES outcome
-    if holders_data and holders_data[0].get('holders'):
-        yes_holders = holders_data[0].get('holders', [])
-        
-        # 3. ADD MARKET CONTEXT TO EACH HOLDER AND AGGREGATE
-        for holder in yes_holders:
-            # Clean up and normalize the holder data
-            holder['market_question'] = market_question
-            holder['amount_float'] = float(holder.get('amount', 0))
-            
-            # Use pseudonym if available, otherwise default to a short wallet address
-            username = holder.get('pseudonym') or holder.get('name') or "Anonymous"
-            holder['username'] = username
-            
-            all_top_holders.append(holder)
-        
-        print(f"   Added {len(yes_holders)} holders.")
+    
 
 
 # 4. SORT THE ENTIRE LIST AND TAKE THE TOP N
