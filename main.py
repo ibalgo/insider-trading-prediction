@@ -14,9 +14,11 @@ params = {
     'order': 'startDate',
     'closed' : 'true',
     'ascending' : 'false',
-    'limit' : 50,
+    'limit' : 20,
     'offset': 200,
-    'resolved' : 'true'
+    'resolved' : 'true',
+    'active' : 'false',
+    'volume_num_min': 10000
 }
 
 resp = requests.get("https://polymarket.com/api/geoblock")
