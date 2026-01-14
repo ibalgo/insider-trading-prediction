@@ -4,14 +4,25 @@ import logging
 import pandas as pd
 from datetime import datetime
 from typing import List, Dict, Any, Optional
-
-# 1. Observability: Structured logging for production monitoring
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-)
+# Create a master logger
 logger = logging.getLogger("PolymarketIngestor")
+logger.setLevel(logging.DEBUG)  # Capture everything at the source
 
+# Create a "Console Handler" 
+console_handler = logging.StreamHandler()
+console_handler.setLevel(logging.INFO) 
+console_format = logging.Formatter('%(levelname)s: %(message)s')
+console_handler.setFormatter(console_format)
+
+# Create a "File Handler" 
+file_handler = logging.FileHandler('pipeline_debug.log')
+file_handler.setLevel(logging.DEBUG)  
+file_format = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+file_handler.setFormatter(file_format)
+
+# Add both handlers to the logger
+logger.addHandler(console_handler)
+logger.addHandler(file_handler)
 class PolymarketDataPipeline:
     """
     An asynchronous pipeline to ingest and normalize trade data from Polymarket.
@@ -77,7 +88,7 @@ class PolymarketDataPipeline:
     async def run_pipeline(self):
         """Main execution entry point using an async context."""
         async with aiohttp.ClientSession() as session:
-            # Step 1: Fetch Markets
+            # Fetch Markets
             market_params = {
                 'order': 'startDate',
                 'closed': 'true',
@@ -96,7 +107,7 @@ class PolymarketDataPipeline:
                 logger.error("Failed to retrieve markets. Exiting.")
                 return
 
-            # Step 2: Concurrency - Fetch all trades at once using gather
+            # Concurrency - Fetch all trades at once using gather
             logger.info(f"Starting concurrent trade ingestion for {len(markets)} markets...")
             tasks = [self.get_trades_for_market(session, m) for m in markets]
             results = await asyncio.gather(*tasks)
@@ -118,7 +129,6 @@ class PolymarketDataPipeline:
         df['timestamp'] = df['timestamp'].dt.tz_convert('US/Eastern').dt.strftime('%Y-%m-%d %H:%M:%S')
         
         cols = ['timestamp', 'title', 'name', 'size', 'price', 'side', 'asset', 'conditionId', 'proxyWallet', 'outcome']
-        # Use only columns that exist to prevent KeyErrors
         existing_cols = [c for c in cols if c in df.columns]
         
         output_file = f"historical_trades_{datetime.now().strftime('%Y%m%d')}.csv"
